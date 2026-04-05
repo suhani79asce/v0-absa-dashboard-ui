@@ -37,6 +37,17 @@ export interface RLState {
   discountFactor: number
 }
 
+export interface LearningEvent {
+  id: string
+  timestamp: string
+  state: StateKey
+  action: ActionType
+  outcome: "accepted" | "ignored"
+  reward: number
+  qValueBefore: number
+  qValueAfter: number
+}
+
 // Action labels for display
 export const ACTION_LABELS: Record<ActionType, string> = {
   suggest_break: "Suggested Break",
@@ -118,7 +129,7 @@ export function selectAction(rlState: RLState, currentState: StateKey): ActionTy
 }
 
 // Calculate reward based on outcome and action context
-function calculateReward(action: ActionType, outcome: Outcome, userState: UserState): number {
+export function calculateReward(action: ActionType, outcome: Outcome, userState: UserState): number {
   const baseReward = outcome === "accepted" ? 1.0 : -0.5
   
   // Bonus for appropriate actions

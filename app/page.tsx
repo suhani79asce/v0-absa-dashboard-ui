@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { Timeline } from "@/components/dashboard/timeline"
 import { InsightCard } from "@/components/dashboard/insight-card"
+import { RLInsights } from "@/components/dashboard/rl-insights"
 import {
   createInitialRLState,
   determineState,
@@ -14,12 +15,15 @@ import {
   simulateUserResponse,
   updateUserState,
   generateInsight,
+  calculateReward,
   ACTION_LABELS,
   SCENARIO_STATES,
   type RLState,
   type UserState,
   type TimelineEvent,
   type ActionType,
+  type LearningEvent,
+  type StateKey,
 } from "@/lib/rl-engine"
 
 export default function Dashboard() {
@@ -27,6 +31,7 @@ export default function Dashboard() {
   const [scenario, setScenario] = useState("student")
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [currentInsight, setCurrentInsight] = useState("Agent is initializing and learning user preferences...")
+  const [learningHistory, setLearningHistory] = useState<LearningEvent[]>([])
 
   // RL State
   const [rlState, setRlState] = useState<RLState>(() => createInitialRLState())
@@ -50,6 +55,7 @@ export default function Dashboard() {
     prevUserStateRef.current = newState
     setEvents([])
     setRlState(createInitialRLState())
+    setLearningHistory([])
     setCurrentInsight("Agent is adapting to new scenario...")
   }, [scenario])
 
@@ -90,10 +96,32 @@ export default function Dashboard() {
         )
       )
 
+      // Get Q-value before update
+      const qValueBefore = rlState.qTable[currentState][selectedAction]
+
       // Step 5: Update Q-table based on outcome (learning)
       const nextState = determineState(userState)
       const newRlState = updateQTable(rlState, currentState, selectedAction, outcome, nextState, userState)
       setRlState(newRlState)
+
+      // Get Q-value after update
+      const qValueAfter = newRlState.qTable[currentState][selectedAction]
+
+      // Calculate reward for learning history
+      const reward = calculateReward(selectedAction, outcome, userState)
+
+      // Add to learning history
+      const learningEvent: LearningEvent = {
+        id: Date.now().toString(),
+        timestamp: timeString,
+        state: currentState,
+        action: selectedAction,
+        outcome,
+        reward,
+        qValueBefore,
+        qValueAfter,
+      }
+      setLearningHistory((prev) => [learningEvent, ...prev.slice(0, 49)])
 
       // Step 6: Update user state
       prevUserStateRef.current = userState
@@ -130,6 +158,7 @@ export default function Dashboard() {
     setUserState(initialState)
     prevUserStateRef.current = initialState
     setRlState(createInitialRLState())
+    setLearningHistory([])
     setCurrentInsight("Agent reset. Starting fresh with exploration mode...")
   }
 
@@ -159,6 +188,8 @@ export default function Dashboard() {
             <span>Exploration: {Math.round(rlState.explorationRate * 100)}%</span>
             <span className="text-border">|</span>
             <span>State: {determineState(userState).replace("_", " ")}</span>
+            <span className="text-border">|</span>
+            <span>Updates: {learningHistory.length}</span>
           </div>
 
           {/* State Snapshot */}
@@ -196,6 +227,11 @@ export default function Dashboard() {
                 icon={Flame}
               />
             </div>
+          </section>
+
+          {/* RL Insights Panel */}
+          <section>
+            <RLInsights rlState={rlState} learningHistory={learningHistory} />
           </section>
 
           {/* Behavior Timeline */}
