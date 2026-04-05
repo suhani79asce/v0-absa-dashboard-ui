@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Monitor, Activity, Zap, Flame } from "lucide-react"
-import { Sidebar } from "@/components/dashboard/sidebar"
+import { Sidebar, type ViewType } from "@/components/dashboard/sidebar"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { Timeline } from "@/components/dashboard/timeline"
 import { InsightCard } from "@/components/dashboard/insight-card"
@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [currentInsight, setCurrentInsight] = useState("Agent is initializing and learning user preferences...")
   const [learningHistory, setLearningHistory] = useState<LearningEvent[]>([])
+  const [currentView, setCurrentView] = useState<ViewType>("dashboard")
 
   // RL State
   const [rlState, setRlState] = useState<RLState>(() => createInitialRLState())
@@ -166,83 +167,111 @@ export default function Dashboard() {
   const formatScreenTimeMinutes = (hours: number) => Math.round(hours * 60)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-[oklch(0.15_0.03_270)]">
       <Sidebar
         isRunning={isRunning}
         onToggleRunning={() => setIsRunning(!isRunning)}
         onReset={handleReset}
         scenario={scenario}
         onScenarioChange={setScenario}
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        learningUpdates={learningHistory.length}
       />
 
       {/* Main Content */}
-      <main className="ml-64 p-8 lg:p-12">
-        <div className="max-w-5xl mx-auto space-y-8">
-          {/* RL Status Indicator */}
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <span>Q-Learning Agent</span>
+      <main className="ml-72 p-8 lg:p-12">
+        <div className="max-w-6xl mx-auto">
+          {currentView === "dashboard" ? (
+            <div className="space-y-8">
+              {/* Page Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold text-foreground tracking-tight">Dashboard</h1>
+                  <p className="text-sm text-muted-foreground mt-1">Monitor agent behavior and user state</p>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground bg-card/50 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-border/50">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-[oklch(0.72_0.18_145)] animate-pulse' : 'bg-muted-foreground'}`} />
+                    <span>{isRunning ? 'Learning' : 'Paused'}</span>
+                  </div>
+                  <span className="text-border">|</span>
+                  <span>Exploration: <span className="text-primary font-medium">{Math.round(rlState.explorationRate * 100)}%</span></span>
+                  <span className="text-border">|</span>
+                  <span>State: <span className="text-accent font-medium">{determineState(userState).replace("_", " ")}</span></span>
+                </div>
+              </div>
+
+              {/* State Snapshot */}
+              <section>
+                <h2 className="text-xs text-muted-foreground uppercase tracking-wider mb-4 font-medium">
+                  State Snapshot
+                </h2>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatCard
+                    label="Screen Time"
+                    value={formatScreenTimeMinutes(userState.screenTime)}
+                    format="time"
+                    trend={screenTimeTrend}
+                    icon={Monitor}
+                    color="primary"
+                  />
+                  <StatCard
+                    label="Addiction Score"
+                    value={Math.round(userState.addictionScore)}
+                    format="percentage"
+                    trend={addictionTrend}
+                    icon={Activity}
+                    color="destructive"
+                  />
+                  <StatCard
+                    label="Energy Level"
+                    value={Math.round(userState.energyLevel)}
+                    format="percentage"
+                    trend={energyTrend}
+                    icon={Zap}
+                    color="warning"
+                  />
+                  <StatCard
+                    label="Habit Streak"
+                    value={userState.habitStreak}
+                    unit="days"
+                    trend={streakTrend}
+                    icon={Flame}
+                    color="positive"
+                  />
+                </div>
+              </section>
+
+              {/* Behavior Timeline */}
+              <section className="min-h-[400px]">
+                <Timeline events={events} />
+              </section>
+
+              {/* Insight Card */}
+              <section>
+                <InsightCard insight={currentInsight} />
+              </section>
             </div>
-            <span className="text-border">|</span>
-            <span>Exploration: {Math.round(rlState.explorationRate * 100)}%</span>
-            <span className="text-border">|</span>
-            <span>State: {determineState(userState).replace("_", " ")}</span>
-            <span className="text-border">|</span>
-            <span>Updates: {learningHistory.length}</span>
-          </div>
+          ) : (
+            <div className="space-y-8">
+              {/* Page Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold text-foreground tracking-tight">RL Insights</h1>
+                  <p className="text-sm text-muted-foreground mt-1">Explore what the agent has learned through reinforcement learning</p>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground bg-card/50 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-border/50">
+                  <span>Total Updates: <span className="text-primary font-medium">{learningHistory.length}</span></span>
+                  <span className="text-border">|</span>
+                  <span>Learning Rate: <span className="text-accent font-medium">{rlState.learningRate}</span></span>
+                </div>
+              </div>
 
-          {/* State Snapshot */}
-          <section>
-            <h2 className="text-xs text-muted-foreground uppercase tracking-wider mb-4 font-medium">
-              State Snapshot
-            </h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                label="Screen Time"
-                value={formatScreenTimeMinutes(userState.screenTime)}
-                format="time"
-                trend={screenTimeTrend}
-                icon={Monitor}
-              />
-              <StatCard
-                label="Addiction Score"
-                value={Math.round(userState.addictionScore)}
-                format="percentage"
-                trend={addictionTrend}
-                icon={Activity}
-              />
-              <StatCard
-                label="Energy Level"
-                value={Math.round(userState.energyLevel)}
-                format="percentage"
-                trend={energyTrend}
-                icon={Zap}
-              />
-              <StatCard
-                label="Habit Streak"
-                value={userState.habitStreak}
-                unit="days"
-                trend={streakTrend}
-                icon={Flame}
-              />
+              {/* RL Insights Panel - Full Width */}
+              <RLInsights rlState={rlState} learningHistory={learningHistory} />
             </div>
-          </section>
-
-          {/* RL Insights Panel */}
-          <section>
-            <RLInsights rlState={rlState} learningHistory={learningHistory} />
-          </section>
-
-          {/* Behavior Timeline */}
-          <section className="min-h-[400px]">
-            <Timeline events={events} />
-          </section>
-
-          {/* Insight Card */}
-          <section>
-            <InsightCard insight={currentInsight} />
-          </section>
+          )}
         </div>
       </main>
     </div>

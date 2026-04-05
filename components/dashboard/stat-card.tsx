@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+type ColorType = "primary" | "destructive" | "warning" | "positive" | "accent"
 
 interface StatCardProps {
   label: string
@@ -10,6 +13,35 @@ interface StatCardProps {
   trend?: number
   icon: LucideIcon
   format?: "number" | "time" | "percentage"
+  color?: ColorType
+}
+
+const colorStyles: Record<ColorType, { icon: string; glow: string; border: string }> = {
+  primary: {
+    icon: "bg-[oklch(0.72_0.18_280)]/15 text-[oklch(0.72_0.18_280)]",
+    glow: "from-[oklch(0.72_0.18_280)]/10",
+    border: "group-hover:border-[oklch(0.72_0.18_280)]/30",
+  },
+  destructive: {
+    icon: "bg-[oklch(0.6_0.2_25)]/15 text-[oklch(0.6_0.2_25)]",
+    glow: "from-[oklch(0.6_0.2_25)]/10",
+    border: "group-hover:border-[oklch(0.6_0.2_25)]/30",
+  },
+  warning: {
+    icon: "bg-[oklch(0.75_0.18_60)]/15 text-[oklch(0.75_0.18_60)]",
+    glow: "from-[oklch(0.75_0.18_60)]/10",
+    border: "group-hover:border-[oklch(0.75_0.18_60)]/30",
+  },
+  positive: {
+    icon: "bg-[oklch(0.72_0.18_145)]/15 text-[oklch(0.72_0.18_145)]",
+    glow: "from-[oklch(0.72_0.18_145)]/10",
+    border: "group-hover:border-[oklch(0.72_0.18_145)]/30",
+  },
+  accent: {
+    icon: "bg-[oklch(0.68_0.2_195)]/15 text-[oklch(0.68_0.2_195)]",
+    glow: "from-[oklch(0.68_0.2_195)]/10",
+    border: "group-hover:border-[oklch(0.68_0.2_195)]/30",
+  },
 }
 
 export function StatCard({
@@ -19,6 +51,7 @@ export function StatCard({
   trend = 0,
   icon: Icon,
   format = "number",
+  color = "primary",
 }: StatCardProps) {
   const [displayValue, setDisplayValue] = useState(value)
   const [isAnimating, setIsAnimating] = useState(false)
@@ -46,15 +79,23 @@ export function StatCard({
   const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus
   const trendColor =
     trend > 0
-      ? "text-[oklch(0.7_0.15_145)]"
+      ? "text-[oklch(0.72_0.18_145)]"
       : trend < 0
-      ? "text-[oklch(0.65_0.15_25)]"
+      ? "text-[oklch(0.6_0.2_25)]"
       : "text-muted-foreground"
 
+  const styles = colorStyles[color]
+
   return (
-    <div className="group relative overflow-hidden rounded-2xl bg-card/40 backdrop-blur-xl border border-border/50 p-5 transition-all duration-300 hover:bg-card/60 hover:border-border hover:translate-y-[-2px] hover:shadow-lg hover:shadow-primary/5">
+    <div className={cn(
+      "group relative overflow-hidden rounded-2xl bg-card/40 backdrop-blur-xl border border-border/50 p-5 transition-all duration-300 hover:bg-card/60 hover:translate-y-[-2px] hover:shadow-lg",
+      styles.border
+    )}>
       {/* Subtle glow effect */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className={cn(
+        "absolute inset-0 bg-gradient-to-br to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500",
+        styles.glow
+      )} />
       
       <div className="relative flex items-start justify-between">
         <div className="flex flex-col gap-1">
@@ -75,8 +116,11 @@ export function StatCard({
           </div>
         </div>
 
-        <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center">
-          <Icon className="w-5 h-5 text-muted-foreground" />
+        <div className={cn(
+          "w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110",
+          styles.icon
+        )}>
+          <Icon className="w-5 h-5" />
         </div>
       </div>
 
