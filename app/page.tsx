@@ -1,87 +1,65 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Monitor, Activity, Zap, Flame } from "lucide-react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { StatCard } from "@/components/dashboard/stat-card"
-import { Timeline, type TimelineEvent } from "@/components/dashboard/timeline"
+import { Timeline } from "@/components/dashboard/timeline"
 import { InsightCard } from "@/components/dashboard/insight-card"
-
-const initialEvents: TimelineEvent[] = [
-  {
-    id: "1",
-    time: "10:30 AM",
-    action: "Suggested Break",
-    outcome: "accepted",
-    type: "break",
-  },
-  {
-    id: "2",
-    time: "10:15 AM",
-    action: "Blocked Social Media",
-    outcome: "ignored",
-    type: "block",
-  },
-  {
-    id: "3",
-    time: "9:45 AM",
-    action: "Suggested Sleep Reminder",
-    outcome: "accepted",
-    type: "sleep",
-  },
-  {
-    id: "4",
-    time: "9:30 AM",
-    action: "Sent Focus Notification",
-    outcome: "accepted",
-    type: "notification",
-  },
-  {
-    id: "5",
-    time: "9:00 AM",
-    action: "Suggested Morning Break",
-    outcome: "ignored",
-    type: "break",
-  },
-]
-
-const insights = [
-  "User responds better to suggestions than restrictions.",
-  "Low energy periods correlate with high screen usage.",
-  "Morning breaks improve afternoon productivity by 23%.",
-  "User accepts 68% of sleep-related suggestions.",
-  "Blocking social media has 40% lower compliance than gentle reminders.",
-]
-
-const newActions: Omit<TimelineEvent, "id" | "time">[] = [
-  { action: "Suggested Stretch Break", outcome: "accepted", type: "break" },
-  { action: "Blocked Gaming Sites", outcome: "ignored", type: "block" },
-  { action: "Sent Hydration Reminder", outcome: "accepted", type: "notification" },
-  { action: "Suggested Power Nap", outcome: "accepted", type: "sleep" },
-  { action: "Blocked News Websites", outcome: "ignored", type: "block" },
-  { action: "Suggested Eye Rest", outcome: "accepted", type: "break" },
-]
+import {
+  createInitialRLState,
+  determineState,
+  selectAction,
+  updateQTable,
+  simulateUserResponse,
+  updateUserState,
+  generateInsight,
+  ACTION_LABELS,
+  SCENARIO_STATES,
+  type RLState,
+  type UserState,
+  type TimelineEvent,
+  type ActionType,
+} from "@/lib/rl-engine"
 
 export default function Dashboard() {
   const [isRunning, setIsRunning] = useState(true)
   const [scenario, setScenario] = useState("student")
-  const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
-  const [currentInsight, setCurrentInsight] = useState(insights[0])
+  const [events, setEvents] = useState<TimelineEvent[]>([])
+  const [currentInsight, setCurrentInsight] = useState("Agent is initializing and learning user preferences...")
 
-  // Stats
-  const [screenTime, setScreenTime] = useState(185) // minutes
-  const [addictionScore, setAddictionScore] = useState(34)
-  const [energyLevel, setEnergyLevel] = useState(72)
-  const [habitStreak, setHabitStreak] = useState(7)
+  // RL State
+  const [rlState, setRlState] = useState<RLState>(() => createInitialRLState())
+  
+  // User State
+  const [userState, setUserState] = useState<UserState>(() => SCENARIO_STATES.student)
 
-  // Trends
-  const [screenTimeTrend] = useState(-12)
-  const [addictionTrend] = useState(-8)
-  const [energyTrend] = useState(5)
-  const [streakTrend] = useState(15)
+  // Previous values for trend calculation
+  const prevUserStateRef = useRef<UserState>(userState)
 
-  const addNewEvent = useCallback(() => {
-    const randomAction = newActions[Math.floor(Math.random() * newActions.length)]
+  // Calculate trends
+  const screenTimeTrend = Math.round((userState.screenTime - prevUserStateRef.current.screenTime) * 10)
+  const addictionTrend = userState.addictionScore - prevUserStateRef.current.addictionScore
+  const energyTrend = userState.energyLevel - prevUserStateRef.current.energyLevel
+  const streakTrend = userState.habitStreak - prevUserStateRef.current.habitStreak
+
+  // Handle scenario change
+  useEffect(() => {
+    const newState = SCENARIO_STATES[scenario as keyof typeof SCENARIO_STATES]
+    setUserState(newState)
+    prevUserStateRef.current = newState
+    setEvents([])
+    setRlState(createInitialRLState())
+    setCurrentInsight("Agent is adapting to new scenario...")
+  }, [scenario])
+
+  const processAgentStep = useCallback(() => {
+    // Step 1: Determine current state
+    const currentState = determineState(userState)
+    
+    // Step 2: Select action using Q-learning policy
+    const selectedAction = selectAction(rlState, currentState)
+    
     const now = new Date()
     const timeString = now.toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -89,52 +67,74 @@ export default function Dashboard() {
       hour12: true,
     })
 
+    // Step 3: Create pending event
     const newEvent: TimelineEvent = {
       id: Date.now().toString(),
       time: timeString,
-      ...randomAction,
+      action: selectedAction,
+      actionLabel: ACTION_LABELS[selectedAction],
+      outcome: null,
+      pending: true,
     }
 
     setEvents((prev) => [newEvent, ...prev.slice(0, 9)])
 
-    // Update stats based on outcome
-    if (randomAction.outcome === "accepted") {
-      setAddictionScore((prev) => Math.max(0, prev - Math.floor(Math.random() * 3)))
-      setEnergyLevel((prev) => Math.min(100, prev + Math.floor(Math.random() * 5)))
-      if (randomAction.type === "break") {
-        setScreenTime((prev) => Math.max(0, prev - Math.floor(Math.random() * 10)))
-      }
-    } else {
-      setAddictionScore((prev) => Math.min(100, prev + Math.floor(Math.random() * 2)))
-      setScreenTime((prev) => prev + Math.floor(Math.random() * 5))
-    }
-  }, [])
+    // Step 4: Simulate user response after a delay
+    setTimeout(() => {
+      const outcome = simulateUserResponse(selectedAction, userState, scenario)
+      
+      // Update event with outcome
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === newEvent.id ? { ...e, outcome, pending: false } : e
+        )
+      )
+
+      // Step 5: Update Q-table based on outcome (learning)
+      const nextState = determineState(userState)
+      const newRlState = updateQTable(rlState, currentState, selectedAction, outcome, nextState, userState)
+      setRlState(newRlState)
+
+      // Step 6: Update user state
+      prevUserStateRef.current = userState
+      const newUserState = updateUserState(userState, selectedAction, outcome)
+      setUserState(newUserState)
+
+      // Step 7: Generate new insight
+      setCurrentInsight(generateInsight(newRlState, newUserState))
+    }, 1500)
+  }, [rlState, userState, scenario])
 
   useEffect(() => {
     if (!isRunning) return
 
-    const eventInterval = setInterval(() => {
-      addNewEvent()
-    }, 5000)
+    // Initial action
+    const initialTimeout = setTimeout(() => {
+      processAgentStep()
+    }, 1000)
 
-    const insightInterval = setInterval(() => {
-      setCurrentInsight(insights[Math.floor(Math.random() * insights.length)])
-    }, 8000)
+    // Subsequent actions
+    const eventInterval = setInterval(() => {
+      processAgentStep()
+    }, 6000)
 
     return () => {
+      clearTimeout(initialTimeout)
       clearInterval(eventInterval)
-      clearInterval(insightInterval)
     }
-  }, [isRunning, addNewEvent])
+  }, [isRunning, processAgentStep])
 
   const handleReset = () => {
-    setEvents(initialEvents)
-    setScreenTime(185)
-    setAddictionScore(34)
-    setEnergyLevel(72)
-    setHabitStreak(7)
-    setCurrentInsight(insights[0])
+    const initialState = SCENARIO_STATES[scenario as keyof typeof SCENARIO_STATES]
+    setEvents([])
+    setUserState(initialState)
+    prevUserStateRef.current = initialState
+    setRlState(createInitialRLState())
+    setCurrentInsight("Agent reset. Starting fresh with exploration mode...")
   }
+
+  // Format screen time for display
+  const formatScreenTimeMinutes = (hours: number) => Math.round(hours * 60)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
@@ -149,6 +149,18 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="ml-64 p-8 lg:p-12">
         <div className="max-w-5xl mx-auto space-y-8">
+          {/* RL Status Indicator */}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span>Q-Learning Agent</span>
+            </div>
+            <span className="text-border">|</span>
+            <span>Exploration: {Math.round(rlState.explorationRate * 100)}%</span>
+            <span className="text-border">|</span>
+            <span>State: {determineState(userState).replace("_", " ")}</span>
+          </div>
+
           {/* State Snapshot */}
           <section>
             <h2 className="text-xs text-muted-foreground uppercase tracking-wider mb-4 font-medium">
@@ -157,28 +169,28 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Screen Time"
-                value={screenTime}
+                value={formatScreenTimeMinutes(userState.screenTime)}
                 format="time"
                 trend={screenTimeTrend}
                 icon={Monitor}
               />
               <StatCard
                 label="Addiction Score"
-                value={addictionScore}
+                value={Math.round(userState.addictionScore)}
                 format="percentage"
                 trend={addictionTrend}
                 icon={Activity}
               />
               <StatCard
                 label="Energy Level"
-                value={energyLevel}
+                value={Math.round(userState.energyLevel)}
                 format="percentage"
                 trend={energyTrend}
                 icon={Zap}
               />
               <StatCard
                 label="Habit Streak"
-                value={habitStreak}
+                value={userState.habitStreak}
                 unit="days"
                 trend={streakTrend}
                 icon={Flame}
